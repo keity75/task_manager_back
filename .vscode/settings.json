@@ -1,0 +1,18 @@
+{
+    "[python]": {
+        "editor.formatOnSave": true,            // 保存時に自動でフォーマット
+        "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "explicit",        // Ruffの自動修正を実行
+            "source.organizeImports.ruff": "explicit"// import文のソート
+        },
+        "editor.defaultFormatter": "charliermarsh.ruff"  // フォーマッターをRuffに設定
+    },
+
+    "ruff.nativeServer": "auto",            // 新サーバーを使用
+
+    // エディタ表示系（OS共通の利便性向上）
+    "git.autofetch": true,                    // Git自動フェッチを有効化
+
+    // セマンティックハイライトを有効化
+    "editor.semanticHighlighting.enabled": true,
+}

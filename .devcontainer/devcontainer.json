@@ -1,0 +1,11 @@
+{
+  "name": "FastAPI DevContainer",
+  "dockerComposeFile": ["../compose.yml"],
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "settings": {
+    "terminal.integrated.defaultProfile.linux": "bash"
+  },
+  "extensions": ["ms-python.python", "ms-python.vscode-pylance", "charliermarsh.ruff"],
+  "remoteUser": "vscode"
+}

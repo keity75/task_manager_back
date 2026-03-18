@@ -1,0 +1,13 @@
+# PythonはGit上でLFに統一
+*.py text eol=lf
+
+# 設定・ドキュメントもGit上でLFに統一
+*.toml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+
+# 💡 ポイント
+# - エディタ保存時はOSのデフォルト改行を尊重
+# - Gitリポジトリ上では常にLF → diff安定
+# - Ruffのline-ending=autoと組み合わせることで混在環境でも安全

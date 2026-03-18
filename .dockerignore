@@ -1,0 +1,64 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+docs/
+*.md
+
+# CI/CD
+.gitlab-ci.yml
+.gitlab/
+
+# Development
+.devcontainer/
+.vscode/
+compose.yml
+
+# Testing
+tests/
+.pytest_cache/
+coverage.xml
+.coverage
+htmlcov/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Poetry
+poetry.lock
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Firebase
+firebase/
+.firebaserc
+firebase.json
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

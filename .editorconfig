@@ -1,0 +1,16 @@
+# .editorconfig
+root = true   # プロジェクトルートでのみ適用
+
+# 全ファイル共通設定
+[*]
+charset = utf-8                     # 文字コードはUTF-8
+indent_style = space                # インデントはスペース
+indent_size = 4                     # インデント幅は4スペース
+trim_trailing_whitespace = true     # 行末の余計な空白を削除
+insert_final_newline = true         # ファイル末尾に必ず改行を入れる
+
+# Pythonファイル固有設定
+[*.py]
+max_line_length = 88                # エディタ表示上の警告で推奨行長
+# end_of_line は指定せず OS デフォルトに任せる
+# → WindowsならCRLF、Mac/LinuxならLFで表示・保存される

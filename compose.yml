@@ -1,0 +1,46 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - .:/workspace:cached
+    working_dir: /workspace
+    ports:
+      - "8000:8000"
+      - "5678:5678"
+    environment:
+      RUFF_CONFIG: pyproject.toml
+      GOOGLE_CLOUD_PROJECT: ${FIRESTORE_EMULATOR_PROJECT:-demo-task-manager}
+    command: >
+      sh -c "python -m debugpy --wait-for-client --listen 0.0.0.0:5678 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    depends_on:
+      - firestore
+
+  firestore:
+    build: ./firebase/firestore
+    container_name: firestore_emulator
+    volumes:
+      - ./firebase/.firebaserc:/opt/firebase/.firebaserc
+      - ./firebase/firebase.json:/opt/firebase/firebase.json
+      - ./firebase/firestore/firestore.indexes.json:/opt/firebase/firestore.indexes.json
+      - ./firebase/firestore/firestore.rules:/opt/firebase/firestore.rules
+      - ./firebase/firestore/bin/:/root/.cache:cached
+      - ./firebase/firestore/config/:/root/.config:cached
+    environment:
+      - FIREBASE_EMULATOR_UI_HOST=0.0.0.0
+      - GOOGLE_CLOUD_PROJECT=${FIRESTORE_EMULATOR_PROJECT:-demo-task-manager}
+    ports:
+      - 9099:9099 # Firebase Authentication
+      - 8080:8080 # Cloud Firestore
+      - 4000:4000 # Emulator Suite UI
+      # - 5001:5001 # Clound Functions
+      # - 9000:9000 # Realtime Database
+      # - 5050:5050 # Firebase Hosting
+      # - 8085:8085 # Cloud Pub/Sub
+      # - 9199:9199 # Cloud Storage
+    working_dir: /opt/firebase
+    command: sh -c "firebase emulators:start --only firestore --project=$$GOOGLE_CLOUD_PROJECT"
+    tty: true

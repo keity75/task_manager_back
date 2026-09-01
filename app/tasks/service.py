@@ -1,6 +1,7 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, time
+from typing import cast
 from zoneinfo import ZoneInfo
 
 from app.core.logging import get_logger
@@ -132,7 +133,9 @@ class TaskService:
                 if isinstance(result, Exception):
                     raise result
 
-            total, todo, in_progress, done = results
+            total, todo, in_progress, done = cast(
+                "tuple[int, int, int, int]", results
+            )
 
         return schemas.TaskSummaryResponse(
             total=total,

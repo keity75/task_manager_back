@@ -126,7 +126,7 @@ class TaskService:
                 due_at_to_utc,
             )
 
-            # return_exceptions=Trueで全Futureの結果（例外含む）を回収し、
+            # return_exceptions=Trueで全Futureの結果(例外含む)を回収し、
             # 未回収例外ログを防ぎつつ最初の例外を再送出する。
             results = await asyncio.gather(
                 total_count_future,

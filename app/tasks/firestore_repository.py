@@ -181,6 +181,90 @@ class FirestoreTaskRepository(TaskRepository):
         else:
             return results
 
+    def get_by_id(self, user_id: str, task_id: str) -> dict[str, Any] | None:
+        """Firestoreからタスクを1件取得する。存在しない、または削除済みの場合はNoneを返す"""
+        try:
+            doc_ref = self._get_tasks_collection(user_id).document(task_id)
+            doc = doc_ref.get()
+
+            if not doc.exists:
+                return None
+
+            data = doc.to_dict() or {}
+            if data.get("deletedAt") is not None:
+                return None
+
+            data["id"] = doc.id
+        except Exception as err:
+            log.warning(
+                "Failed to get task from Firestore.",
+                user_id=user_id,
+                task_id=task_id,
+                error_type=type(err).__name__,
+                original_error=str(err),
+            )
+            raise TaskRepositoryError(TaskErrorMessages.FAILED_TO_GET_TASK) from err
+        else:
+            return data
+
+    def update(
+        self, user_id: str, task_id: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Firestoreのタスクを部分更新する。存在しない、または削除済みの場合はNoneを返す"""
+        try:
+            doc_ref = self._get_tasks_collection(user_id).document(task_id)
+            doc = doc_ref.get()
+
+            if not doc.exists:
+                return None
+
+            existing = doc.to_dict() or {}
+            if existing.get("deletedAt") is not None:
+                return None
+
+            update_data = {**data, "updatedAt": datetime.now(UTC)}
+            doc_ref.update(update_data)
+
+            updated = {**existing, **update_data, "id": doc_ref.id}
+        except Exception as err:
+            log.warning(
+                "Failed to update task in Firestore.",
+                user_id=user_id,
+                task_id=task_id,
+                error_type=type(err).__name__,
+                original_error=str(err),
+            )
+            raise TaskRepositoryError(TaskErrorMessages.FAILED_TO_UPDATE_TASK) from err
+        else:
+            return updated
+
+    def soft_delete(self, user_id: str, task_id: str) -> dict[str, Any] | None:
+        """Firestoreのタスクを論理削除する。存在しない、または既に削除済みの場合はNoneを返す"""
+        try:
+            doc_ref = self._get_tasks_collection(user_id).document(task_id)
+            doc = doc_ref.get()
+
+            if not doc.exists:
+                return None
+
+            existing = doc.to_dict() or {}
+            if existing.get("deletedAt") is not None:
+                return None
+
+            now_utc = datetime.now(UTC)
+            doc_ref.update({"deletedAt": now_utc, "updatedAt": now_utc})
+        except Exception as err:
+            log.warning(
+                "Failed to delete task in Firestore.",
+                user_id=user_id,
+                task_id=task_id,
+                error_type=type(err).__name__,
+                original_error=str(err),
+            )
+            raise TaskRepositoryError(TaskErrorMessages.FAILED_TO_DELETE_TASK) from err
+        else:
+            return {"id": doc_ref.id}
+
 
 @cache
 def get_task_repository(

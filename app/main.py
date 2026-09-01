@@ -36,8 +36,11 @@ from app.core.logging import configure_logging, get_logger
 from app.core.settings import settings
 from app.middleware.cors import setup_cors
 from app.middleware.logging import RequestLoggingMiddleware
-from app.tasks.exception_handlers import handle_task_repository_error
-from app.tasks.exceptions import TaskRepositoryError
+from app.tasks.exception_handlers import (
+    handle_task_not_found_error,
+    handle_task_repository_error,
+)
+from app.tasks.exceptions import TaskNotFoundError, TaskRepositoryError
 from app.tasks.router import router as tasks_router
 
 # --- 1. 初期設定 ---
@@ -89,6 +92,7 @@ setup_cors(app)
 
 app.add_exception_handler(RequestValidationError, handle_validation_error)  # type: ignore[arg-type]
 app.add_exception_handler(TaskRepositoryError, handle_task_repository_error)  # type: ignore[arg-type]
+app.add_exception_handler(TaskNotFoundError, handle_task_not_found_error)  # type: ignore[arg-type]
 app.add_exception_handler(InvalidRefreshTokenError, handle_invalid_refresh_token_error)  # type: ignore[arg-type]
 app.add_exception_handler(InvalidAccessTokenError, handle_invalid_access_token_error)  # type: ignore[arg-type]
 app.add_exception_handler(

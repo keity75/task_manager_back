@@ -18,7 +18,7 @@ from app.tasks.constants import (
     TASK_STATUS_IN_PROGRESS,
     TASK_STATUS_TODO,
 )
-from app.tasks.exceptions import TaskRepositoryError
+from app.tasks.exceptions import TaskNotFoundError, TaskRepositoryError
 from app.tasks.repository import TaskRepository
 from app.tasks.service import TaskService
 
@@ -396,3 +396,180 @@ class TestListTasks:
                 filters=schemas.TaskFilterParams(),
                 pagination=PaginationParams(),
             )
+
+
+class TestGetTask:
+    """get_taskメソッドのテスト"""
+
+    def test_get_task_returns_task_with_calendar_link(
+        self, task_service: TaskService, mock_repo: Mock, mock_calendar_gen: Mock
+    ) -> None:
+        """正常系: Repositoryの結果をTaskListItemへ変換し、カレンダーリンクを付与して返す"""
+        mock_repo.get_by_id.return_value = _build_raw_task(
+            task_id="task-1", title="Task 1"
+        )
+
+        result = task_service.get_task("task-1", user_id="user-1")
+
+        assert isinstance(result, schemas.TaskListItem)
+        assert result.id == "task-1"
+        assert result.title == "Task 1"
+        assert result.calendar_link == mock_calendar_gen.generate.return_value
+        mock_repo.get_by_id.assert_called_once_with(user_id="user-1", task_id="task-1")
+
+    def test_get_task_raises_not_found_when_repo_returns_none(
+        self, task_service: TaskService, mock_repo: Mock
+    ) -> None:
+        """異常系: Repositoryがタスクを見つけられない場合、TaskNotFoundErrorを送出する"""
+        mock_repo.get_by_id.return_value = None
+
+        with pytest.raises(TaskNotFoundError):
+            task_service.get_task("nonexistent", user_id="user-1")
+
+    def test_get_task_repository_error_propagates(
+        self, task_service: TaskService, mock_repo: Mock
+    ) -> None:
+        """異常系: RepositoryがTaskRepositoryErrorを送出した場合、そのまま伝播する"""
+        mock_repo.get_by_id.side_effect = TaskRepositoryError("Repository error")
+
+        with pytest.raises(TaskRepositoryError):
+            task_service.get_task("task-1", user_id="user-1")
+
+
+class TestUpdateTask:
+    """update_taskメソッドのテスト"""
+
+    def test_update_task_sends_only_provided_fields_to_repo(
+        self, task_service: TaskService, mock_repo: Mock
+    ) -> None:
+        """正常系: リクエストに含まれたフィールドのみRepositoryへ渡される"""
+        mock_repo.update.return_value = {"id": "task-1"}
+        req = schemas.TaskUpdateRequest(title="New Title")
+
+        task_service.update_task("task-1", req, user_id="user-1")
+
+        mock_repo.update.assert_called_once_with(
+            user_id="user-1", task_id="task-1", data={"title": "New Title"}
+        )
+
+    def test_update_task_maps_all_fields_to_firestore_keys(
+        self, task_service: TaskService, mock_repo: Mock
+    ) -> None:
+        """正常系: due_at等のsnake_caseフィールドがFirestoreのcamelCaseキーに変換される"""
+        mock_repo.update.return_value = {"id": "task-1"}
+        due_at = datetime(2026, 12, 31, tzinfo=UTC)
+        req = schemas.TaskUpdateRequest(
+            title="New Title",
+            description="New description",
+            due_at=due_at,
+            priority=TASK_PRIORITY_HIGH,
+            status=TASK_STATUS_IN_PROGRESS,
+        )
+
+        task_service.update_task("task-1", req, user_id="user-1")
+
+        mock_repo.update.assert_called_once_with(
+            user_id="user-1",
+            task_id="task-1",
+            data={
+                "title": "New Title",
+                "description": "New description",
+                "dueAt": due_at,
+                "priority": TASK_PRIORITY_HIGH,
+                "status": TASK_STATUS_IN_PROGRESS,
+            },
+        )
+
+    def test_update_task_allows_explicitly_clearing_nullable_field(
+        self, task_service: TaskService, mock_repo: Mock
+    ) -> None:
+        """正常系: description/due_atを明示的にNoneにするとクリア指示としてRepositoryへ渡す"""
+        mock_repo.update.return_value = {"id": "task-1"}
+        req = schemas.TaskUpdateRequest(description=None, due_at=None)
+
+        task_service.update_task("task-1", req, user_id="user-1")
+
+        mock_repo.update.assert_called_once_with(
+            user_id="user-1",
+            task_id="task-1",
+            data={"description": None, "dueAt": None},
+        )
+
+    def test_update_task_empty_body_sends_empty_dict(
+        self, task_service: TaskService, mock_repo: Mock
+    ) -> None:
+        """エッジケース: 更新フィールドが1つもない場合、空辞書がRepositoryへ渡される"""
+        mock_repo.update.return_value = {"id": "task-1"}
+        req = schemas.TaskUpdateRequest()
+
+        task_service.update_task("task-1", req, user_id="user-1")
+
+        mock_repo.update.assert_called_once_with(
+            user_id="user-1", task_id="task-1", data={}
+        )
+
+    def test_update_task_returns_id_from_repository_response(
+        self, task_service: TaskService, mock_repo: Mock
+    ) -> None:
+        """正常系: Repositoryが返す辞書の"id"キーの値をそのまま返す"""
+        mock_repo.update.return_value = {"id": "updated-id", "title": "New Title"}
+        req = schemas.TaskUpdateRequest(title="New Title")
+
+        result = task_service.update_task("task-1", req, user_id="user-1")
+
+        assert result == "updated-id"
+
+    def test_update_task_raises_not_found_when_repo_returns_none(
+        self, task_service: TaskService, mock_repo: Mock
+    ) -> None:
+        """異常系: Repositoryがタスクを見つけられない場合、TaskNotFoundErrorを送出する"""
+        mock_repo.update.return_value = None
+        req = schemas.TaskUpdateRequest(title="New Title")
+
+        with pytest.raises(TaskNotFoundError):
+            task_service.update_task("nonexistent", req, user_id="user-1")
+
+    def test_update_task_repository_error_propagates(
+        self, task_service: TaskService, mock_repo: Mock
+    ) -> None:
+        """異常系: RepositoryがTaskRepositoryErrorを送出した場合、そのまま伝播する"""
+        mock_repo.update.side_effect = TaskRepositoryError("Repository error")
+        req = schemas.TaskUpdateRequest(title="New Title")
+
+        with pytest.raises(TaskRepositoryError):
+            task_service.update_task("task-1", req, user_id="user-1")
+
+
+class TestDeleteTask:
+    """delete_taskメソッドのテスト"""
+
+    def test_delete_task_returns_id_from_repository_response(
+        self, task_service: TaskService, mock_repo: Mock
+    ) -> None:
+        """正常系: Repositoryが返す辞書の"id"キーの値をそのまま返す"""
+        mock_repo.soft_delete.return_value = {"id": "task-1"}
+
+        result = task_service.delete_task("task-1", user_id="user-1")
+
+        assert result == "task-1"
+        mock_repo.soft_delete.assert_called_once_with(
+            user_id="user-1", task_id="task-1"
+        )
+
+    def test_delete_task_raises_not_found_when_repo_returns_none(
+        self, task_service: TaskService, mock_repo: Mock
+    ) -> None:
+        """異常系: Repositoryがタスクを見つけられない(既に削除済み含む)場合、TaskNotFoundErrorを送出する"""
+        mock_repo.soft_delete.return_value = None
+
+        with pytest.raises(TaskNotFoundError):
+            task_service.delete_task("nonexistent", user_id="user-1")
+
+    def test_delete_task_repository_error_propagates(
+        self, task_service: TaskService, mock_repo: Mock
+    ) -> None:
+        """異常系: RepositoryがTaskRepositoryErrorを送出した場合、そのまま伝播する"""
+        mock_repo.soft_delete.side_effect = TaskRepositoryError("Repository error")
+
+        with pytest.raises(TaskRepositoryError):
+            task_service.delete_task("task-1", user_id="user-1")

@@ -1,7 +1,7 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, time
-from typing import cast
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 from app.core.logging import get_logger
@@ -18,10 +18,21 @@ from app.tasks.constants import (
     TASK_STATUS_IN_PROGRESS,
     TASK_STATUS_TODO,
 )
+from app.tasks.error_messages import TaskErrorMessages
+from app.tasks.exceptions import TaskNotFoundError
 from app.tasks.repository import TaskRepository
 
 DEFAULT_TZ = ZoneInfo(settings.DEFAULT_TIMEZONE)
 log = get_logger(__name__)
+
+# TaskUpdateRequestのフィールド名(snake_case) -> Firestoreドキュメントのキー(camelCase)
+_UPDATABLE_FIELD_TO_FIRESTORE_KEY = {
+    "title": "title",
+    "description": "description",
+    "due_at": "dueAt",
+    "priority": "priority",
+    "status": "status",
+}
 
 
 class TaskService:
@@ -189,19 +200,60 @@ class TaskService:
 
             raw_tasks, total_count = results
 
-        items = []
-        for raw_task in raw_tasks:
-            task = schemas.Task(**raw_task)
-            calendar_link = self.calendar_link_generator.generate(task)
-            items.append(
-                schemas.TaskListItem(**task.model_dump(), calendar_link=calendar_link)
-            )
+        items = [self._to_list_item(raw_task) for raw_task in raw_tasks]
 
         return items, total_count
+
+    def get_task(self, task_id: str, user_id: str) -> schemas.TaskListItem:
+        """タスク詳細を1件取得する
+
+        存在しない、他ユーザーのタスク、削除済みタスクの場合はTaskNotFoundErrorを送出する。
+        """
+        raw_task = self.repo.get_by_id(user_id=user_id, task_id=task_id)
+        if raw_task is None:
+            raise TaskNotFoundError(TaskErrorMessages.TASK_NOT_FOUND)
+
+        return self._to_list_item(raw_task)
+
+    def update_task(
+        self, task_id: str, req: schemas.TaskUpdateRequest, user_id: str
+    ) -> str:
+        """タスクを部分更新してIDを返す
+
+        リクエストに含まれたフィールドのみ更新する(未指定フィールドは変更しない)。
+        存在しない、他ユーザーのタスク、削除済みタスクの場合はTaskNotFoundErrorを送出する。
+        """
+        update_data = {
+            _UPDATABLE_FIELD_TO_FIRESTORE_KEY[field_name]: getattr(req, field_name)
+            for field_name in req.model_fields_set
+        }
+
+        updated = self.repo.update(user_id=user_id, task_id=task_id, data=update_data)
+        if updated is None:
+            raise TaskNotFoundError(TaskErrorMessages.TASK_NOT_FOUND)
+
+        return updated["id"]
+
+    def delete_task(self, task_id: str, user_id: str) -> str:
+        """タスクを論理削除してIDを返す
+
+        存在しない、他ユーザーのタスク、既に削除済みのタスクの場合はTaskNotFoundErrorを送出する。
+        """
+        deleted = self.repo.soft_delete(user_id=user_id, task_id=task_id)
+        if deleted is None:
+            raise TaskNotFoundError(TaskErrorMessages.TASK_NOT_FOUND)
+
+        return deleted["id"]
 
     # ------------------------------------------------------------------ #
     # Internal helpers
     # ------------------------------------------------------------------ #
+
+    def _to_list_item(self, raw_task: dict[str, Any]) -> schemas.TaskListItem:
+        """Firestoreの生データをカレンダーリンク付きのレスポンスモデルに変換する"""
+        task = schemas.Task(**raw_task)
+        calendar_link = self.calendar_link_generator.generate(task)
+        return schemas.TaskListItem(**task.model_dump(), calendar_link=calendar_link)
 
     def _resolve_due_at_range_utc(
         self, filters: schemas.TaskFilterParams

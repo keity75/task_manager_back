@@ -497,3 +497,235 @@ class TestListTasks:
         assert exc_info.value.__cause__ is not None
         assert "Connection error" in str(exc_info.value.__cause__)
 
+
+class TestGetById:
+    """get_by_idメソッドのテスト"""
+
+    def test_get_by_id_returns_task_with_id(self, db: firestore.Client) -> None:
+        """正常系: 存在するタスクをid付きで返す"""
+        user_id = _create_user(db)
+        repo = FirestoreTaskRepository(db)
+        created = repo.create(_build_base_task_data(user_id, title="task-1"))
+
+        result = repo.get_by_id(user_id=user_id, task_id=created["id"])
+
+        assert result is not None
+        assert result["id"] == created["id"]
+        assert result["title"] == "task-1"
+
+    def test_get_by_id_returns_none_when_not_found(self, db: firestore.Client) -> None:
+        """正常系: 存在しないタスクIDの場合はNoneを返す"""
+        user_id = _create_user(db)
+        repo = FirestoreTaskRepository(db)
+
+        result = repo.get_by_id(user_id=user_id, task_id="nonexistent-id")
+
+        assert result is None
+
+    def test_get_by_id_returns_none_when_soft_deleted(
+        self, db: firestore.Client
+    ) -> None:
+        """正常系: 削除済み(deletedAt設定済み)タスクの場合はNoneを返す"""
+        user_id = _create_user(db)
+        repo = FirestoreTaskRepository(db)
+        task_id = _create_deleted_task(db, user_id)
+
+        result = repo.get_by_id(user_id=user_id, task_id=task_id)
+
+        assert result is None
+
+    def test_get_by_id_returns_none_for_other_users_task(
+        self, db: firestore.Client
+    ) -> None:
+        """正常系: 他ユーザーのタスクIDを指定した場合はNoneを返す(サブコレクションで隔離されるため)"""
+        repo = FirestoreTaskRepository(db)
+        owner_id = _create_user(db)
+        other_user_id = _create_user(db)
+        created = repo.create(_build_base_task_data(owner_id, title="owner-task"))
+
+        result = repo.get_by_id(user_id=other_user_id, task_id=created["id"])
+
+        assert result is None
+
+    def test_get_by_id_firestore_connection_error(self, db: firestore.Client) -> None:
+        """異常系: Firestore接続エラー時にTaskRepositoryErrorを発生"""
+        repo = FirestoreTaskRepository(db)
+
+        with (
+            patch.object(db, "collection", side_effect=Exception("Connection error")),
+            pytest.raises(
+                TaskRepositoryError, match=TaskErrorMessages.FAILED_TO_GET_TASK
+            ) as exc_info,
+        ):
+            repo.get_by_id(user_id="user-1", task_id="task-1")
+
+        assert exc_info.value.__cause__ is not None
+        assert "Connection error" in str(exc_info.value.__cause__)
+
+
+class TestUpdate:
+    """updateメソッドのテスト"""
+
+    def test_update_applies_only_given_fields(self, db: firestore.Client) -> None:
+        """正常系: 指定したフィールドのみ更新され、他フィールドは変更されない"""
+        user_id = _create_user(db)
+        repo = FirestoreTaskRepository(db)
+        created = repo.create(
+            _build_base_task_data(
+                user_id,
+                title="Original",
+                description="Original description",
+                priority=TASK_PRIORITY_LOW,
+            )
+        )
+
+        result = repo.update(
+            user_id=user_id, task_id=created["id"], data={"title": "Updated"}
+        )
+
+        assert result is not None
+        assert result["title"] == "Updated"
+        assert result["description"] == "Original description"
+        assert result["priority"] == TASK_PRIORITY_LOW
+
+        # Firestoreに実際に反映されていることを再取得して確認
+        fetched = repo.get_by_id(user_id=user_id, task_id=created["id"])
+        assert fetched is not None
+        assert fetched["title"] == "Updated"
+        assert fetched["description"] == "Original description"
+
+    def test_update_can_clear_nullable_field(self, db: firestore.Client) -> None:
+        """正常系: description等のnull許容フィールドを明示的にNoneでクリアできる"""
+        user_id = _create_user(db)
+        repo = FirestoreTaskRepository(db)
+        created = repo.create(
+            _build_base_task_data(user_id, description="to be cleared")
+        )
+
+        result = repo.update(
+            user_id=user_id, task_id=created["id"], data={"description": None}
+        )
+
+        assert result is not None
+        assert result["description"] is None
+
+    def test_update_bumps_updated_at(self, db: firestore.Client) -> None:
+        """正常系: updatedAtが更新時刻に更新される"""
+        user_id = _create_user(db)
+        repo = FirestoreTaskRepository(db)
+        original_time = datetime(2020, 1, 1, tzinfo=UTC)
+        created = repo.create(_build_base_task_data(user_id))
+        # createdAt/updatedAtを過去の時刻に強制的に書き換えて差分を検証しやすくする
+        db.collection("users").document(user_id).collection("tasks").document(
+            created["id"]
+        ).update({"updatedAt": original_time})
+
+        result = repo.update(
+            user_id=user_id, task_id=created["id"], data={"title": "changed"}
+        )
+
+        assert result is not None
+        assert result["updatedAt"] > original_time
+
+    def test_update_returns_none_when_not_found(self, db: firestore.Client) -> None:
+        """正常系: 存在しないタスクIDの場合はNoneを返す"""
+        user_id = _create_user(db)
+        repo = FirestoreTaskRepository(db)
+
+        result = repo.update(
+            user_id=user_id, task_id="nonexistent-id", data={"title": "x"}
+        )
+
+        assert result is None
+
+    def test_update_returns_none_when_soft_deleted(self, db: firestore.Client) -> None:
+        """正常系: 削除済みタスクの場合はNoneを返す(更新もされない)"""
+        user_id = _create_user(db)
+        repo = FirestoreTaskRepository(db)
+        task_id = _create_deleted_task(db, user_id, title="Deleted")
+
+        result = repo.update(
+            user_id=user_id, task_id=task_id, data={"title": "should-not-apply"}
+        )
+
+        assert result is None
+
+    def test_update_firestore_connection_error(self, db: firestore.Client) -> None:
+        """異常系: Firestore接続エラー時にTaskRepositoryErrorを発生"""
+        repo = FirestoreTaskRepository(db)
+
+        with (
+            patch.object(db, "collection", side_effect=Exception("Connection error")),
+            pytest.raises(
+                TaskRepositoryError, match=TaskErrorMessages.FAILED_TO_UPDATE_TASK
+            ) as exc_info,
+        ):
+            repo.update(user_id="user-1", task_id="task-1", data={"title": "x"})
+
+        assert exc_info.value.__cause__ is not None
+        assert "Connection error" in str(exc_info.value.__cause__)
+
+
+class TestSoftDelete:
+    """soft_deleteメソッドのテスト"""
+
+    def test_soft_delete_sets_deleted_at(self, db: firestore.Client) -> None:
+        """正常系: deletedAtに削除時刻が設定される(物理削除されない)"""
+        user_id = _create_user(db)
+        repo = FirestoreTaskRepository(db)
+        created = repo.create(_build_base_task_data(user_id))
+
+        result = repo.soft_delete(user_id=user_id, task_id=created["id"])
+
+        assert result is not None
+        assert result["id"] == created["id"]
+
+        # ドキュメント自体は物理削除されていないことを直接確認
+        doc = (
+            db.collection("users")
+            .document(user_id)
+            .collection("tasks")
+            .document(created["id"])
+            .get()
+        )
+        assert doc.exists
+        assert doc.to_dict()["deletedAt"] is not None
+
+    def test_soft_delete_returns_none_when_not_found(
+        self, db: firestore.Client
+    ) -> None:
+        """正常系: 存在しないタスクIDの場合はNoneを返す"""
+        user_id = _create_user(db)
+        repo = FirestoreTaskRepository(db)
+
+        result = repo.soft_delete(user_id=user_id, task_id="nonexistent-id")
+
+        assert result is None
+
+    def test_soft_delete_returns_none_when_already_deleted(
+        self, db: firestore.Client
+    ) -> None:
+        """正常系: 既に削除済みのタスクの場合はNoneを返す(冪等に失敗を示す)"""
+        user_id = _create_user(db)
+        repo = FirestoreTaskRepository(db)
+        task_id = _create_deleted_task(db, user_id)
+
+        result = repo.soft_delete(user_id=user_id, task_id=task_id)
+
+        assert result is None
+
+    def test_soft_delete_firestore_connection_error(self, db: firestore.Client) -> None:
+        """異常系: Firestore接続エラー時にTaskRepositoryErrorを発生"""
+        repo = FirestoreTaskRepository(db)
+
+        with (
+            patch.object(db, "collection", side_effect=Exception("Connection error")),
+            pytest.raises(
+                TaskRepositoryError, match=TaskErrorMessages.FAILED_TO_DELETE_TASK
+            ) as exc_info,
+        ):
+            repo.soft_delete(user_id="user-1", task_id="task-1")
+
+        assert exc_info.value.__cause__ is not None
+        assert "Connection error" in str(exc_info.value.__cause__)
+

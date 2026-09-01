@@ -35,3 +35,20 @@ class TaskRepository(Protocol):
     ) -> list[dict[str, Any]]:
         """フィルター・ソート・ページネーションを適用したタスク一覧を取得する"""
         ...
+
+    def get_by_id(self, user_id: str, task_id: str) -> dict[str, Any] | None:
+        """IDでタスクを1件取得する。存在しない、または削除済みの場合はNoneを返す"""
+        ...
+
+    def update(
+        self, user_id: str, task_id: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """タスクを部分更新して返す。存在しない、または削除済みの場合はNoneを返す
+
+        dataには更新対象フィールドのみを含める。
+        """
+        ...
+
+    def soft_delete(self, user_id: str, task_id: str) -> dict[str, Any] | None:
+        """タスクを論理削除する。存在しない、または既に削除済みの場合はNoneを返す"""
+        ...

@@ -1,8 +1,8 @@
 from datetime import date, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
 from fastapi import Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.schemas import CamelModel
 from app.core.validation import (
@@ -102,9 +102,95 @@ class TaskIdResponse(BaseModel):
 
 
 class TaskListItem(Task):
-    """タスク一覧APIのレスポンスアイテム(カレンダーリンク付き)"""
+    """タスク一覧/詳細APIのレスポンスアイテム(カレンダーリンク付き)"""
 
     calendar_link: str | None = None
+
+
+# 一覧APIと同じ形状のため再利用(タスク詳細取得APIのレスポンス用)
+TaskDetailResponse = TaskListItem
+
+
+class TaskUpdateRequest(CamelModel):
+    """タスク部分更新用のリクエストモデル(PATCH)
+
+    指定されたフィールドのみが更新対象となる(未指定フィールドは変更しない)。
+    calendarLink/userId/createdAt/deletedAtは更新対象として受け付けない。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = Field(
+        default=None, max_length=255, description="255文字以下。指定時は必須(null不可)"
+    )
+    due_at: datetime | None = Field(
+        default=None,
+        description=(
+            "ISO 8601形式の日時。タイムゾーン情報がない場合はJSTとして解釈される。"
+            "nullを指定すると期限をクリアする"
+        ),
+    )
+    description: str | None = Field(
+        default=None, max_length=100000, description="nullを指定すると説明をクリアする"
+    )
+    priority: int | None = Field(
+        default=None, description="1/2/3/4。4=緊急。指定時は必須(null不可)"
+    )
+    status: int | None = Field(
+        default=None, description="10/20/30。指定時は必須(null不可)"
+    )
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: str | None) -> str | None:
+        """titleフィールドの必須・最大長を検証する(未指定時はスキップ)。
+
+        空文字("")は明示的に指定されたとみなし、空不可として扱う。
+        """
+        if v is not None:
+            validate_required(v, field_name="title")
+            validate_max_length(v, max_len=255, field_name="title")
+        return v
+
+    @field_validator("due_at")
+    @classmethod
+    def validate_due_at(cls, v: datetime | None) -> datetime | None:
+        """dueAtフィールドを柔軟に受け入れ、UTCに正規化する。"""
+        if v is not None:
+            v = validate_datetime_with_default_tz(v, field_name="dueAt")
+        return v
+
+    @field_validator("priority")
+    @classmethod
+    def validate_priority(cls, v: int | None) -> int | None:
+        """priorityを許容範囲(1-4)に限定する(未指定時はスキップ)。"""
+        validate_in_choices(
+            v,
+            choices=ALLOWED_PRIORITIES,
+            field_name="priority",
+            allow_none=True,
+        )
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, v: str | None) -> str | None:
+        """descriptionフィールドの最大長を検証する(未指定時はスキップ)。"""
+        if v is not None:
+            validate_max_length(v, max_len=100000, field_name="description")
+        return v
+
+    @model_validator(mode="after")
+    def validate_non_nullable_fields_when_provided(self) -> Self:
+        """title/priority/statusはDB上NOT NULLのため、指定時にnullは許容しない。
+
+        未指定(省略)はデフォルト値Noneのため、model_fields_setで
+        「実際にリクエストへ含まれていたか」を判定して区別する。
+        """
+        for field_name in ("title", "priority", "status"):
+            if field_name in self.model_fields_set and getattr(self, field_name) is None:
+                validate_required(None, field_name=field_name)
+        return self
 
 
 class TaskFilterParams:

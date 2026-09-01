@@ -109,3 +109,74 @@ def create_task(
         f"{settings.API_PREFIX}{settings.API_VERSION}/tasks/{task_id}"
     )
     return core_schemas.SuccessResponse(data=schemas.TaskIdResponse(id=task_id))
+
+
+@router.get(
+    "/{task_id}",
+    response_model=core_schemas.SuccessResponse[schemas.TaskDetailResponse],
+    summary="タスク詳細の取得",
+    description="指定されたIDのタスク詳細を取得します。他ユーザーのタスクや削除済みタスクは404を返します。",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": core_schemas.ErrorResponse},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": core_schemas.ErrorResponse},
+    },
+)
+def get_task(
+    task_id: str,
+    service: Annotated[TaskService, Depends(get_task_service)],
+    current_user_id: CurrentUserId,
+) -> core_schemas.SuccessResponse[schemas.TaskDetailResponse]:
+    """指定されたIDのタスク詳細を取得する"""
+    task = service.get_task(task_id, user_id=current_user_id)
+    return core_schemas.SuccessResponse(data=task)
+
+
+@router.patch(
+    "/{task_id}",
+    response_model=core_schemas.SuccessResponse[schemas.TaskIdResponse],
+    summary="タスクの部分更新",
+    description=(
+        "指定されたタスクを部分更新します。リクエストに含まれたフィールドのみが更新され、"
+        "含まれないフィールドは変更されません。他ユーザーのタスクや削除済みタスクは404を返します。"
+    ),
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": core_schemas.ErrorResponse},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"model": core_schemas.ErrorResponse},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": core_schemas.ErrorResponse},
+    },
+)
+def update_task(
+    task_id: str,
+    req: schemas.TaskUpdateRequest,
+    service: Annotated[TaskService, Depends(get_task_service)],
+    current_user_id: CurrentUserId,
+) -> core_schemas.SuccessResponse[schemas.TaskIdResponse]:
+    """指定されたタスクを部分更新する"""
+    updated_task_id = service.update_task(task_id, req, user_id=current_user_id)
+    return core_schemas.SuccessResponse(data=schemas.TaskIdResponse(id=updated_task_id))
+
+
+@router.delete(
+    "/{task_id}",
+    response_model=core_schemas.SuccessResponse[schemas.TaskIdResponse],
+    summary="タスクの削除",
+    description=(
+        "指定されたタスクを論理削除します(deletedAtに削除時刻を設定、物理削除はしません)。"
+        "他ユーザーのタスクや既に削除済みのタスクは404を返します。"
+    ),
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": core_schemas.ErrorResponse},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": core_schemas.ErrorResponse},
+    },
+)
+def delete_task(
+    task_id: str,
+    service: Annotated[TaskService, Depends(get_task_service)],
+    current_user_id: CurrentUserId,
+) -> core_schemas.SuccessResponse[schemas.TaskIdResponse]:
+    """指定されたタスクを論理削除する"""
+    deleted_task_id = service.delete_task(task_id, user_id=current_user_id)
+    return core_schemas.SuccessResponse(data=schemas.TaskIdResponse(id=deleted_task_id))

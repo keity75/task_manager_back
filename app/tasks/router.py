@@ -20,6 +20,42 @@ router = BaseAPIRouter(
 
 
 @router.get(
+    "",
+    response_model=core_schemas.SuccessResponse[list[schemas.TaskListItem]],
+    summary="タスク一覧の取得",
+    description=(
+        "認証済みユーザーのタスク一覧を取得します(削除済みタスクを除く)。"
+        "タイトル前方一致・ステータス・優先度・期限範囲によるフィルタリング、"
+        "ソート、ページネーションに対応します。"
+    ),
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": core_schemas.ErrorResponse},
+    },
+)
+async def list_tasks(
+    service: Annotated[TaskService, Depends(get_task_service)],
+    filters: Annotated[schemas.TaskFilterParams, Depends()],
+    pagination: Annotated[core_schemas.PaginationParams, Depends()],
+    current_user_id: CurrentUserId,
+) -> core_schemas.SuccessResponse[list[schemas.TaskListItem]]:
+    """認証済みユーザーのタスク一覧を取得する"""
+    tasks, total_count = await service.list_tasks(
+        user_id=current_user_id,
+        filters=filters,
+        pagination=pagination,
+    )
+    return core_schemas.SuccessResponse(
+        data=tasks,
+        pagination=core_schemas.PaginationInfo(
+            total_count=total_count,
+            limit=pagination.limit,
+            offset=pagination.offset,
+        ),
+    )
+
+
+@router.get(
     "/summary",
     response_model=core_schemas.SuccessResponse[schemas.TaskSummaryResponse],
     summary="タスク統計情報の取得",

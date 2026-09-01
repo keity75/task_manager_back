@@ -133,6 +133,54 @@ class FirestoreTaskRepository(TaskRepository):
         else:
             return new_task
 
+    def list(
+        self,
+        user_id: str,
+        filters: schemas.TaskFilterParams,
+        due_at_from_utc: datetime | None,
+        due_at_to_utc: datetime | None,
+        sort_by: str,
+        order: str,
+        limit: int,
+        offset: int,
+    ) -> list[dict[str, Any]]:
+        """Firestoreからフィルター・ソート・ページネーション適用済みのタスク一覧を取得する
+
+        Note:
+            dueAtの範囲フィルター(dueAtFrom/dueAtTo)と併用してdueAt以外のフィールドで
+            ソートする場合、Firestore側の複合インデックスが別途必要になることがある。
+
+        """
+        try:
+            tasks_collection = self._get_tasks_collection(user_id)
+
+            query = self._build_filtered_query(
+                tasks_collection,
+                filters,
+                due_at_from_utc,
+                due_at_to_utc,
+            )
+
+            direction = Query.DESCENDING if order == "desc" else Query.ASCENDING
+            query = query.order_by(sort_by, direction=direction)
+            query = query.offset(offset).limit(limit)
+
+            results: list[dict[str, Any]] = []
+            for doc in query.stream():
+                data = doc.to_dict() or {}
+                data["id"] = doc.id
+                results.append(data)
+        except Exception as err:
+            log.warning(
+                "Failed to list tasks from Firestore.",
+                user_id=user_id,
+                error_type=type(err).__name__,
+                original_error=str(err),
+            )
+            raise TaskRepositoryError(TaskErrorMessages.FAILED_TO_LIST_TASKS) from err
+        else:
+            return results
+
 
 @cache
 def get_task_repository(

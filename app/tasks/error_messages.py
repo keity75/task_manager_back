@@ -10,3 +10,4 @@ class TaskErrorMessages:
     # ========== Repository Errors ==========
     FAILED_TO_COUNT_TASKS = "Failed to count tasks"
     FAILED_TO_CREATE_TASK = "Failed to create task"
+    FAILED_TO_LIST_TASKS = "Failed to list tasks"

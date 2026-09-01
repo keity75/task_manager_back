@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Query
 from pydantic import BaseModel, Field, field_validator
@@ -13,6 +13,9 @@ from app.core.validation import (
 )
 
 ALLOWED_PRIORITIES = {1, 2, 3, 4}
+
+TaskSortBy = Literal["title", "priority", "status", "dueAt", "createdAt"]
+TaskSortOrder = Literal["asc", "desc"]
 
 
 class Task(CamelModel):
@@ -98,6 +101,12 @@ class TaskIdResponse(BaseModel):
     id: str
 
 
+class TaskListItem(Task):
+    """タスク一覧APIのレスポンスアイテム(カレンダーリンク付き)"""
+
+    calendar_link: str | None = None
+
+
 class TaskFilterParams:
     """タスク一覧のフィルタリング条件 (DI用クラス)
 
@@ -119,9 +128,22 @@ class TaskFilterParams:
         due_at_to: Annotated[
             date | None, Query(alias="dueAtTo", description="タスク期限 (To)")
         ] = None,
+        sort_by: Annotated[
+            TaskSortBy | None,
+            Query(
+                alias="sortBy",
+                description="ソート項目(title/priority/status/dueAt/createdAt)",
+            ),
+        ] = None,
+        order: Annotated[
+            TaskSortOrder | None,
+            Query(description="ソート順序(asc/desc)"),
+        ] = None,
     ) -> None:
         self.title = title or None
         self.priority = priority
         self.status = status
         self.due_at_from = due_at_from
         self.due_at_to = due_at_to
+        self.sort_by = sort_by
+        self.order = order

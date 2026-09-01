@@ -21,3 +21,17 @@ class TaskRepository(Protocol):
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
         """タスクを作成して返す (ID付与済み辞書)"""
         ...
+
+    def list(
+        self,
+        user_id: str,
+        filters: schemas.TaskFilterParams,
+        due_at_from_utc: datetime | None,
+        due_at_to_utc: datetime | None,
+        sort_by: str,
+        order: str,
+        limit: int,
+        offset: int,
+    ) -> list[dict[str, Any]]:
+        """フィルター・ソート・ページネーションを適用したタスク一覧を取得する"""
+        ...

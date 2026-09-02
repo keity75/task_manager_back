@@ -34,6 +34,17 @@ from app.core.exception_handlers import (
 )
 from app.core.logging import configure_logging, get_logger
 from app.core.settings import settings
+from app.emails.exception_handlers import (
+    handle_email_not_found_error,
+    handle_gmail_permission_denied_error,
+    handle_gmail_repository_error,
+)
+from app.emails.exceptions import (
+    EmailNotFoundError,
+    GmailPermissionDeniedError,
+    GmailRepositoryError,
+)
+from app.emails.router import router as emails_router
 from app.middleware.cors import setup_cors
 from app.middleware.logging import RequestLoggingMiddleware
 from app.tasks.exception_handlers import (
@@ -104,6 +115,9 @@ app.add_exception_handler(TokenUpdateError, handle_token_update_error)  # type: 
 app.add_exception_handler(AuthRepositoryError, handle_auth_repository_error)  # type: ignore[arg-type]
 app.add_exception_handler(ProviderNotFoundError, handle_provider_not_found_error)  # type: ignore[arg-type]
 app.add_exception_handler(TokenRefreshError, handle_token_refresh_error)  # type: ignore[arg-type]
+app.add_exception_handler(EmailNotFoundError, handle_email_not_found_error)  # type: ignore[arg-type]
+app.add_exception_handler(GmailPermissionDeniedError, handle_gmail_permission_denied_error)  # type: ignore[arg-type]
+app.add_exception_handler(GmailRepositoryError, handle_gmail_repository_error)  # type: ignore[arg-type]
 app.add_exception_handler(Exception, handle_generic_exception)  # type: ignore[arg-type]
 
 
@@ -117,3 +131,4 @@ def read_root() -> dict[str, str]:
 api_v1_prefix = f"{settings.API_PREFIX}{settings.API_VERSION}"
 app.include_router(tasks_router, prefix=api_v1_prefix)
 app.include_router(auth_router, prefix=api_v1_prefix)
+app.include_router(emails_router, prefix=api_v1_prefix)
